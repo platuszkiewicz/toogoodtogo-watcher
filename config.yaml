@@ -1,0 +1,28 @@
+apps:
+  tgtg_watcher:
+    # your too good to go credentials
+    email: 'piotr.latuszkiewicz@gmail.com '
+    password: 'podkowaLesna8!'
+    # your location preference (for distance)
+    latitude: 52.1764391
+    longitude: 20.9837097
+    # default waiting time
+    normal-wait-from: 20
+    normal-wait-to: 50
+    # speed-up time range
+    speedup-time-from: 1800
+    speedup-time-to: 2130
+    speedup-wait-from: 10
+    speedup-wait-to: 20
+    # pause the script during the night
+    # pause at 21h for 9h long (21h00 > 6h00)
+    #'pause-from': 2100,        # 23:00
+    #'pause-for': 9 * 60,       # 9h (in minutes)
+    night-pause-from: 2300
+    night-pause-to: 1200
+    # telegram bot
+    telegram-token: ''
+    telegram-chat-id: ''
+  example:
+    config_1: 'A'
+    config_2: 'X'

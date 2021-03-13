@@ -1,3 +1,4 @@
+# Script adjusted for run as HomeAssisant pyscript script.
 import os
 import sys
 import json
@@ -8,17 +9,17 @@ import time
 import datetime
 import telegram
 import base64
-from config import config
+#from config import config
 
 class TooGoodToGo:
     def __init__(self):
         self.home = os.path.expanduser("~")
-        self.cfgfile = "%s/.config/tgtgw/config.json" % self.home
+        #self.cfgfile = "%s/.config/tgtgw/config.json" % self.home
 
         # default values
         self.config = {
-            'email': config['email'],
-            'password': config['password'],
+            'email': pyscript.app_config['email'],
+            'password': pyscript.app_config['password'],
             'accesstoken': None,
             'refreshtoken': None,
             'userid': "",
@@ -34,44 +35,57 @@ class TooGoodToGo:
             'nc': "\033[0m",
         }
 
-        self.bot = telegram.Bot(token=config['telegram-token'])
+        #self.bot = telegram.Bot(token=config['telegram-token'])
 
         # load configuration if exists
         self.load()
 
     # load configuration
     def load(self):
-        if not os.path.exists(self.cfgfile):
+        if not 'sensor.tgtg_watcher_config' in state.names(domain=None):
             return False
+		
+        if state.get('sensor.tgtg_watcher_config.accesstoken') == '' or  state.get('sensor.tgtg_watcher_config.refreshtoken') == '' or state.get('sensor.tgtg_watcher_config.userid') == '':
+            return False		
+	
+        #if not os.path.exists(self.cfgfile):
+        #    return False
 
-        print("[+] loading configuration: %s" % self.cfgfile)
-        with open(self.cfgfile, "r") as f:
-            data = f.read()
+        #log.info("[+] loading configuration: %s" % self.cfgfile)
 
-        self.config = json.loads(data)
+        #with open(self.cfgfile, "r") as f:
+        #with task.executor(open, self.cfgfile, "r") as f:
+        #    data = task.executor(f.read())
 
-        print("[+] access token: %s" % self.config['accesstoken'])
-        print("[+] refresh token: %s" % self.config['refreshtoken'])
-        print("[+] user id: %s" % self.config['userid'])
+        #self.config = json.loads(data)
+        self.config['accesstoken'] = state.get('sensor.tgtg_watcher_config.accesstoken')
+        self.config['refreshtoken'] = state.get('sensor.tgtg_watcher_config.refreshtoken')
+        self.config['userid'] = state.get('sensor.tgtg_watcher_config.userid')
 
+        log.info("[+] access token: %s" % self.config['accesstoken'])
+        log.info("[+] refresh token: %s" % self.config['refreshtoken'])
+        log.info("[+] user id: %s" % self.config['userid'])
+			
     # save configuration
     def save(self):
-        basepath = os.path.dirname(self.cfgfile)
-        print("[+] configuration directory: %s" % basepath)
+        #basepath = os.path.dirname(self.cfgfile)
+        #log.info("[+] configuration directory: %s" % basepath)
 
-        if not os.path.exists(basepath):
-            os.makedirs(basepath)
+        #if not os.path.exists(basepath):
+        #    os.makedirs(basepath)
 
-        with open(self.cfgfile, "w") as f:
-            print("[+] writing configuration: %s" % self.cfgfile)
-            f.write(json.dumps(self.config))
+        #with task.executor(open, self.cfgfile, "w") as f:
+        #    log.info("[+] writing configuration: %s" % self.cfgfile)
+        #    task.executor(f.write, json.dumps(self.config))
 
+        state.set('sensor.tgtg_watcher_config', value=datetime.datetime.now(), new_attributes={'accesstoken': self.config['accesstoken'], 'refreshtoken': self.config['refreshtoken'], 'userid': self.config['userid'], 'task_id': task.current_task().get_name()})
+		
     def isauthorized(self, payload):
         if not payload.get("error"):
             return True
 
         if payload['error'] == 'Unauthorized':
-            print("[-] request: unauthorized request")
+            log.info("[-] request: unauthorized request")
             return False
 
         return None
@@ -89,7 +103,7 @@ class TooGoodToGo:
         if self.config['accesstoken']:
             headers['Authorization'] = "Bearer %s" % self.config['accesstoken']
 
-        return self.session.post(self.url(endpoint), headers=headers, json=json)
+        return task.executor(self.session.post, self.url(endpoint), headers=headers, json=json)
 
     def login(self):
         login = {
@@ -101,13 +115,13 @@ class TooGoodToGo:
         # disable access token to request a new one
         self.config['accesstoken'] = None
 
-        print("[+] authentication: login using <%s> email" % login['email'])
+        log.info("[+] authentication: login using <%s> email" % login['email'])
 
         r = self.post("/api/auth/v1/loginByEmail", login)
         data = r.json()
 
         if self.isauthorized(data) == False:
-            print("[-] authentication: login failed, unauthorized")
+            log.info("[-] authentication: login failed, unauthorized")
             self.rawnotifier("Could not authenticate watcher, stopping.")
             sys.exit(1)
 
@@ -123,12 +137,12 @@ class TooGoodToGo:
 
         payload = ref.json()
         if self.isauthorized(payload) == False:
-            print("[-] authentication: refresh failed, re-loggin")
+            log.info("[-] authentication: refresh failed, re-loggin")
             return self.login()
 
         self.config['accesstoken'] = payload['access_token']
 
-        print("[+] new token: %s" % self.config['accesstoken'])
+        log.info("[+] new token: %s" % self.config['accesstoken'])
 
         return True
 
@@ -136,8 +150,8 @@ class TooGoodToGo:
         data = {
             'favorites_only': True,
             'origin': {
-                'latitude': config['latitude'],
-                'longitude': config['longitude']
+                'latitude': pyscript.app_config['latitude'],
+                'longitude': pyscript.app_config['longitude']
             },
             'radius': 200,
             'user_id': self.config['userid'],
@@ -147,7 +161,7 @@ class TooGoodToGo:
 
         while True:
             try:
-                r = self.post("/api/item/v5/", data)
+                r = self.post("/api/item/v7/", data)
                 if r.status_code >= 500:
                     continue
 
@@ -155,9 +169,9 @@ class TooGoodToGo:
                     return r.json()
 
             except Exception as e:
-                print(e)
+                log.info(e)
 
-            time.sleep(1)
+            task.sleep(1)
 
 
     def datetimeparse(self, datestr):
@@ -182,14 +196,20 @@ class TooGoodToGo:
 
 
     def available(self, items):
+        favourites = []
         for item in items['items']:
             name = item['display_name']
             price = item['item']['price']['minor_units'] / 100
-            value = item['item']['value']['minor_units'] / 100
+            value = item['item']['value_including_taxes']['minor_units'] / 100
             color = "green" if item['items_available'] > 0 else "red"
             kname = "%s-%.2d" % (name, price)
 
-            print("[+] merchant: %s%s%s" % (self.colors[color], name, self.colors['nc']))
+            ## log.info("[+] merchant: %s%s%s" % (self.colors[color], name, self.colors['nc']))
+
+            if item['items_available'] > 0:
+                favourites.append({'name': name, 'price': price, 'value': value, 'color': self.colors[color], 'kname': name, 'items_available': item['items_available'], 'pickup_date': self.pickupdate(item), 'link': 'https://share.toogoodtogo.com/item/'+str(item['item']['item_id'])})
+            else:
+                favourites.append({'name': name, 'price': price, 'value': value, 'color': self.colors[color], 'kname': name, 'items_available': item['items_available'], 'pickup_date': 'N/A', 'link': 'https://share.toogoodtogo.com/item/'+str(item['item']['item_id'])})
 
             if item['items_available'] == 0:
                 if self.availables.get(kname):
@@ -197,21 +217,24 @@ class TooGoodToGo:
 
                 continue
 
-            print("[+]   distance: %.2f km" % item['distance'])
-            print("[+]   available: %d" % item['items_available'])
-            print("[+]   price: %.2f € [%.2f €]" % (price, value))
-            print("[+]   address: %s" % item['pickup_location']['address']['address_line'])
-            print("[+]   pickup: %s" % self.pickupdate(item))
+            log.info("[+]   distance: %.2f km" % item['distance'])
+            log.info("[+]   available: %d" % item['items_available'])
+            log.info("[+]   price: %.2f PLN [%.2f PLN]" % (price, value))
+            log.info("[+]   address: %s" % item['pickup_location']['address']['address_line'])
+            log.info("[+]   pickup: %s" % self.pickupdate(item))
 
             if not self.availables.get(kname):
-                print("[+]")
-                print("[+]   == NEW ITEMS AVAILABLE ==")
+                log.info("[+]")
+                log.info("[+]   == NEW ITEMS AVAILABLE ==")
                 self.notifier(item)
                 self.availables[kname] = True
+                #state.set('sensor.tgtg_watcher_data', value="*%s*\n*Available*: %d\n*Price*: %.2f PLN\n*Pickup*: %s" % (item['display_name'], item['items_available'], item['item']['price']['minor_units'] / 100, self.pickupdate(item)))
+                state.set('sensor.tgtg_watcher_data', value=datetime.datetime.now(), new_attributes={'newest_display_name': item['display_name'], 'newest_items_available': item['items_available'], 'newest_price': item['item']['price']['minor_units'] / 100, 'newest_pickup': self.pickupdate(item), 'newest_link': 'https://share.toogoodtogo.com/item/'+item['item']['item_id'], 'newest_ts': datetime.datetime.now()})
 
+            log.info("[+]")
 
-            print("[+]")
-
+        state.setattr('sensor.tgtg_watcher_data.items', value=favourites)
+        
     #
     # STAGING BASKET / CHECKOUT
     #
@@ -261,7 +284,7 @@ class TooGoodToGo:
 
         if data['create_basket_state'] == 'SUCCESS':
             basketid = data['basket_id']
-            print("[+] basket created: %s" % basketid)
+            log.info("[+] basket created: %s" % basketid)
 
             self.checkout(basketid)
 
@@ -300,21 +323,21 @@ class TooGoodToGo:
             "return_url": "toogoodtogoapp://"
         }
 
-        print(payload)
+        log.info(payload)
 
         r = self.post("/api/basket/v2/%s/checkout" % basketid, payload)
         data = r.json()
 
-        print(data)
+        log.info(data)
 
         if data['result'] == 'CONTINUE_PAYMENT':
-            print("OK OK")
+            log.info("OK OK")
 
         pass
 
     def debug(self):
         self.basket("43351i2634099")
-        print("debug")
+        log.info("debug")
 
     #
     #
@@ -322,7 +345,7 @@ class TooGoodToGo:
 
     def rawnotifier(self, message):
         fmt = telegram.ParseMode.MARKDOWN
-        self.bot.send_message(chat_id=config['telegram-chat-id'], text=message, parse_mode=fmt)
+        #self.bot.send_message(chat_id=config['telegram-chat-id'], text=message, parse_mode=fmt)
 
     def notifier(self, item):
         name = item['display_name']
@@ -331,9 +354,9 @@ class TooGoodToGo:
         pickup = self.pickupdate(item)
 
         fmt = telegram.ParseMode.MARKDOWN
-        message = "*%s*\n*Available*: %d\n*Price*: %.2f €\n*Pickup*: %s" % (name, items, price, pickup)
+        message = "*%s*\n*Available*: %d\n*Price*: %.2f PLN\n*Pickup*: %s" % (name, items, price, pickup)
 
-        self.bot.send_message(chat_id=config['telegram-chat-id'], text=message, parse_mode=fmt)
+        #self.bot.send_message(chat_id=config['telegram-chat-id'], text=message, parse_mode=fmt)
 
     def daytime(self):
         now = datetime.datetime.now()
@@ -348,7 +371,7 @@ class TooGoodToGo:
         while True:
             fav = self.favorite()
             if self.isauthorized(fav) == False:
-                print("[-] favorites: unauthorized request, refreshing token")
+                log.info("[-] favorites: unauthorized request, refreshing token")
                 self.refresh()
                 continue
 
@@ -359,36 +382,49 @@ class TooGoodToGo:
             #
             now = self.daytime()
 
-            if now >= config['night-pause-from'] or now <= config['night-pause-to']:
-                print("[+] night mode enabled, fetching disabled")
+            if now >= pyscript.app_config['night-pause-from'] or now <= pyscript.app_config['night-pause-to']:
+                log.info("[+] night mode enabled, fetching disabled")
 
-                while now >= config['night-pause-from'] or now <= config['night-pause-to']:
+                while now >= pyscript.app_config['night-pause-from'] or now <= pyscript.app_config['night-pause-to']:
                     now = self.daytime()
-                    time.sleep(60)
+                    task.sleep(60)
 
-                print("[+] starting new day")
+                log.info("[+] starting new day")
 
             #
             # speedup or normal waiting time
             #
-            waitfrom = config['normal-wait-from']
-            waitto = config['normal-wait-to']
+            waitfrom = pyscript.app_config['normal-wait-from']
+            waitto = pyscript.app_config['normal-wait-to']
 
-            if now >= config['speedup-time-from'] and now <= config['speedup-time-to']:
-                print("[+] speedup time range enabled")
-                waitfrom = config['speedup-wait-from']
-                waitto = config['speedup-wait-to']
+            if now >= pyscript.app_config['speedup-time-from'] and now <= pyscript.app_config['speedup-time-to']:
+                log.info("[+] speedup time range enabled")
+                waitfrom = pyscript.app_config['speedup-wait-from']
+                waitto = pyscript.app_config['speedup-wait-to']
 
             #
             # next iteration
             #
             wait = random.randrange(waitfrom, waitto)
-            print("[+] waiting %d seconds" % wait)
-            time.sleep(wait)
+            log.info("[+] waiting %d seconds" % wait)
+            #time.sleep(wait)
+            task.sleep(wait)
 
         self.save()
 
-if __name__ == '__main__':
-    tgtg = TooGoodToGo()
-    # tgtg.debug()
-    tgtg.watch()
+@state_trigger("input_boolean.tgtg_script_active == 'on' or input_boolean.tgtg_script_active == 'off'")
+def tgtg_watcher():
+    #if __name__ == '__main__':
+      tgtg = TooGoodToGo()
+      # tgtg.debug()
+
+      task.unique('TASK_NAME', kill_me=False)
+      if (state.get('input_boolean.tgtg_script_active') == 'on'):
+          #if ('sensor.tgtg_watcher_data' in state.names(domain=None)):
+              #state.delete('sensor.tgtg_watcher_data')
+          log.info("tgtg Watch")
+          if (not 'sensor.tgtg_watcher_data' in state.names(domain=None)):
+              state.set('sensor.tgtg_watcher_data', value="")
+          tgtg.watch()
+      else:
+          log.info("tgtg Destroy")
